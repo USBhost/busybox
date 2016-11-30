@@ -223,47 +223,6 @@ static void set_priority_flag(char *s)
 #define set_priority_flag(s) ((void)0)
 #endif
 
-static int do_em_all_in_fstab(void)
-{
-	struct mntent *m;
-	int err = 0;
-	FILE *f = xfopen_for_read("/etc/fstab");
-
-	while ((m = getmntent(f)) != NULL) {
-		if (strcmp(m->mnt_type, MNTTYPE_SWAP) == 0) {
-			/* swapon -a should ignore entries with noauto,
-			 * but swapoff -a should process them
-			 */
-			if (do_swapoff || hasmntopt(m, MNTOPT_NOAUTO) == NULL) {
-				/* each swap space might have different flags */
-				/* save global flags for the next round */
-				save_g_flags();
-				if (ENABLE_FEATURE_SWAPON_DISCARD) {
-					char *p = hasmntopt(m, "discard");
-					if (p) {
-						/* move to '=' or to end of string */
-						p += 7;
-						set_discard_flag(p);
-					}
-				}
-				if (ENABLE_FEATURE_SWAPON_PRI) {
-					char *p = hasmntopt(m, "pri");
-					if (p) {
-						set_priority_flag(p + 4);
-					}
-				}
-				err |= swap_enable_disable(m->mnt_fsname);
-				restore_g_flags();
-			}
-		}
-	}
-
-	if (ENABLE_FEATURE_CLEAN_UP)
-		endmntent(f);
-
-	return err;
-}
-
 static int do_all_in_proc_swaps(void)
 {
 	char *line;
@@ -316,7 +275,6 @@ int swap_on_off_main(int argc UNUSED_PARAM, char **argv)
 		/* swapoff -a does also /proc/swaps */
 		if (do_swapoff)
 			ret = do_all_in_proc_swaps();
-		ret |= do_em_all_in_fstab();
 	} else if (!*argv) {
 		/* if not -a we need at least one arg */
 		bb_show_usage();
