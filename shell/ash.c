@@ -3113,7 +3113,18 @@ static const uint8_t syntax_index_table[] ALIGN1 = {
 # endif
 };
 
+#if 1
 # define SIT(c, syntax) ((S_I_T[syntax_index_table[c]] >> ((syntax)*4)) & 0xf)
+#else /* debug version, caught one signed char bug */
+# define SIT(c, syntax) \
+	({ \
+		if ((c) < 0 || (c) > (PEOF + ENABLE_ASH_ALIAS)) \
+			bb_error_msg_and_die("line:%d c:%d", __LINE__, (c)); \
+		if ((syntax) < 0 || (syntax) > (2 + ENABLE_SH_MATH_SUPPORT)) \
+			bb_error_msg_and_die("line:%d c:%d", __LINE__, (c)); \
+		((S_I_T[syntax_index_table[c]] >> ((syntax)*4)) & 0xf); \
+	})
+#endif
 
 #endif  /* !USE_SIT_FUNCTION */
 
@@ -5869,14 +5880,15 @@ memtodest(const char *p, size_t len, int syntax, int quotes)
 	do {
 		unsigned char c = *p++;
 		if (c) {
-			int n = SIT(c, syntax);
-			if ((quotes & QUOTES_ESC)
-			 && ((n == CCTL)
-			    ||  (((quotes & EXP_FULL) || syntax != BASESYNTAX)
-				&& n == CBACK)
-				)
-			) {
-				USTPUTC(CTLESC, q);
+			if (quotes & QUOTES_ESC) {
+				int n = SIT(c, syntax);
+				if (n == CCTL
+				 || (((quotes & EXP_FULL) || syntax != BASESYNTAX)
+				     && n == CBACK
+				    )
+				) {
+					USTPUTC(CTLESC, q);
+				}
 			}
 		} else if (!(quotes & QUOTES_KEEPNUL))
 			continue;
@@ -10051,7 +10063,7 @@ pgetc(void)
 		return g_parsefile->lastc[--g_parsefile->unget];
 
 	if (--g_parsefile->left_in_line >= 0)
-		c = (signed char)*g_parsefile->next_to_pgetc++;
+		c = (unsigned char)*g_parsefile->next_to_pgetc++;
 	else
 		c = preadbuffer();
 
@@ -11373,13 +11385,13 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 	smallint quotef;
 	smallint dblquote;
 	smallint oldstyle;
-	smallint prevsyntax; /* syntax before arithmetic */
+	IF_SH_MATH_SUPPORT(smallint prevsyntax;) /* syntax before arithmetic */
 #if ENABLE_ASH_EXPAND_PRMT
 	smallint pssyntax;   /* we are expanding a prompt string */
 #endif
 	int varnest;         /* levels of variables expansion */
-	int arinest;         /* levels of arithmetic expansion */
-	int parenlevel;      /* levels of parens in arithmetic */
+	IF_SH_MATH_SUPPORT(int arinest;)    /* levels of arithmetic expansion */
+	IF_SH_MATH_SUPPORT(int parenlevel;) /* levels of parens in arithmetic */
 	int dqvarnest;       /* levels of variables expansion within double quotes */
 
 	IF_ASH_BASH_COMPAT(smallint bash_dollar_squote = 0;)
@@ -11387,7 +11399,7 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 	startlinno = g_parsefile->linno;
 	bqlist = NULL;
 	quotef = 0;
-	prevsyntax = 0;
+	IF_SH_MATH_SUPPORT(prevsyntax = 0;)
 #if ENABLE_ASH_EXPAND_PRMT
 	pssyntax = (syntax == PSSYNTAX);
 	if (pssyntax)
@@ -11395,8 +11407,8 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 #endif
 	dblquote = (syntax == DQSYNTAX);
 	varnest = 0;
-	arinest = 0;
-	parenlevel = 0;
+	IF_SH_MATH_SUPPORT(arinest = 0;)
+	IF_SH_MATH_SUPPORT(parenlevel = 0;)
 	dqvarnest = 0;
 
 	STARTSTACKSTR(out);
